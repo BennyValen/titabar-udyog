@@ -1,0 +1,125 @@
+import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
+
+const prisma = new PrismaClient();
+
+async function main() {
+  const passwordHash = await bcrypt.hash("admin123", 12);
+
+  const mainBranch = await prisma.branch.upsert({
+    where: { code: "MAIN" },
+    update: {},
+    create: {
+      name: "Main Factory",
+      code: "MAIN",
+      address: "Titiabar, Assam",
+      phone: "9876543210",
+    },
+  });
+
+  const branch2 = await prisma.branch.upsert({
+    where: { code: "BR02" },
+    update: {},
+    create: {
+      name: "Branch 2",
+      code: "BR02",
+      address: "Guwahati",
+      phone: "9876543211",
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { phone: "9999999999" },
+    update: {},
+    create: {
+      name: "Admin",
+      phone: "9999999999",
+      passwordHash,
+      role: "ADMIN",
+    },
+  });
+
+  const branchPassword = await bcrypt.hash("branch123", 12);
+  await prisma.user.upsert({
+    where: { phone: "8888888888" },
+    update: {},
+    create: {
+      name: "Main Branch User",
+      phone: "8888888888",
+      passwordHash: branchPassword,
+      role: "BRANCH_USER",
+      branchId: mainBranch.id,
+    },
+  });
+
+  const sampleItems = [
+    { name: "Steel Rod 12mm", category: "RAW_MATERIAL" as const, unit: "kg" },
+    { name: "Cement Bag", category: "RAW_MATERIAL" as const, unit: "bag" },
+    { name: "Finished Pipe 2inch", category: "FINISHED_GOOD" as const, unit: "pcs" },
+    { name: "Finished Valve", category: "FINISHED_GOOD" as const, unit: "pcs" },
+    { name: "Trading Bolt M10", category: "TRADING_ITEM" as const, unit: "pcs" },
+    { name: "Trading Nut M10", category: "TRADING_ITEM" as const, unit: "pcs" },
+  ];
+
+  for (const item of sampleItems) {
+    const existing = await prisma.inventoryItem.findFirst({
+      where: { name: item.name, category: item.category },
+    });
+    if (!existing) {
+      await prisma.inventoryItem.create({ data: item });
+    }
+  }
+
+  const items = await prisma.inventoryItem.findMany();
+  const admin = await prisma.user.findUnique({ where: { phone: "9999999999" } });
+
+  for (const branch of [mainBranch, branch2]) {
+    for (const item of items) {
+      const balance = await prisma.stockBalance.findUnique({
+        where: {
+          branchId_inventoryItemId: {
+            branchId: branch.id,
+            inventoryItemId: item.id,
+          },
+        },
+      });
+
+      if (!balance) {
+        const qty = 100;
+        await prisma.stockBalance.create({
+          data: {
+            branchId: branch.id,
+            inventoryItemId: item.id,
+            category: item.category,
+            onHandQty: qty,
+            reservedQty: 0,
+            availableQty: qty,
+          },
+        });
+
+        if (admin) {
+          await prisma.stockMovement.create({
+            data: {
+              branchId: branch.id,
+              inventoryItemId: item.id,
+              category: item.category,
+              movementType: "IN",
+              quantity: qty,
+              referenceType: "IMPORT",
+              note: "Initial seed stock",
+              createdByUserId: admin.id,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  console.log("Seed complete!");
+  console.log("Admin login: 9999999999 / admin123");
+  console.log("Branch user: 8888888888 / branch123");
+}
+
+main()
+  .catch(console.error)
+  .finally(() => prisma.$disconnect());

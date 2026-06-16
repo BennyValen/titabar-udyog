@@ -1,0 +1,306 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  BRANCH_USER
+}
+
+enum StockCategory {
+  RAW_MATERIAL
+  FINISHED_GOOD
+  TRADING_ITEM
+}
+
+enum MovementType {
+  IN
+  OUT
+  RESERVE
+  RELEASE
+  ADJUSTMENT
+}
+
+enum ReferenceType {
+  ORDER
+  ORDER_SUBMIT
+  MANUAL
+  IMPORT
+  ADJUSTMENT
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING
+  SUBMITTED
+  CANCELLED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  RELEASED
+  CONSUMED
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  address   String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users              User[]
+  stockBalances      StockBalance[]
+  stockMovements     StockMovement[]
+  orders             Order[]
+  reservations       OrderStockReservation[]
+  importBatches      InventoryImportBatch[]
+  auditLogs          AuditLog[]
+  manualLowStockAlerts ManualLowStockAlert[]
+
+  @@index([isActive])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  phone        String   @unique
+  passwordHash String
+  role         UserRole
+  branchId     String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  branch              Branch?                @relation(fields: [branchId], references: [id])
+  stockMovements      StockMovement[]
+  ordersCreated       Order[]                @relation("OrderCreatedBy")
+  ordersSubmitted     Order[]                @relation("OrderSubmittedBy")
+  importBatches       InventoryImportBatch[]
+  orderStatusChanges  OrderStatusHistory[]
+  auditLogs           AuditLog[]
+  manualLowStockAlerts ManualLowStockAlert[]
+
+  @@index([branchId])
+  @@index([role])
+}
+
+model InventoryItem {
+  id         String        @id @default(cuid())
+  name       String
+  category   StockCategory
+  subHeading String?
+  unit       String?
+  sku        String?
+  moq        Int           @default(0)
+  isActive   Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  stockBalances  StockBalance[]
+  stockMovements StockMovement[]
+  orderItems     OrderItem[]
+  reservations   OrderStockReservation[]
+  manualLowStockAlerts ManualLowStockAlert[]
+
+  @@index([category])
+  @@index([subHeading])
+  @@index([name])
+  @@index([isActive])
+}
+
+model InventoryImportBatch {
+  id               String        @id @default(cuid())
+  category         StockCategory
+  fileName         String
+  importedByUserId String
+  branchId         String?
+  totalRows        Int
+  successRows      Int
+  failedRows       Int
+  createdAt        DateTime      @default(now())
+
+  importedBy User    @relation(fields: [importedByUserId], references: [id])
+  branch     Branch? @relation(fields: [branchId], references: [id])
+
+  @@index([category])
+  @@index([createdAt])
+}
+
+model StockBalance {
+  id              String        @id @default(cuid())
+  branchId        String
+  inventoryItemId String
+  category        StockCategory
+  onHandQty       Decimal       @default(0)
+  reservedQty     Decimal       @default(0)
+  availableQty    Decimal       @default(0)
+  updatedAt       DateTime      @updatedAt
+
+  branch        Branch        @relation(fields: [branchId], references: [id])
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id])
+
+  @@unique([branchId, inventoryItemId])
+  @@index([branchId])
+  @@index([category])
+  @@index([inventoryItemId])
+}
+
+model StockMovement {
+  id              String        @id @default(cuid())
+  branchId        String
+  inventoryItemId String
+  category        StockCategory
+  movementType    MovementType
+  quantity        Decimal
+  referenceType   ReferenceType
+  referenceId     String?
+  note            String?
+  createdByUserId String
+  createdAt       DateTime      @default(now())
+
+  branch        Branch        @relation(fields: [branchId], references: [id])
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  createdBy     User          @relation(fields: [createdByUserId], references: [id])
+
+  @@index([branchId])
+  @@index([inventoryItemId])
+  @@index([category])
+  @@index([movementType])
+  @@index([createdAt])
+  @@index([branchId, inventoryItemId, createdAt])
+}
+
+model Order {
+  id                String      @id @default(cuid())
+  branchId          String
+  orderNumber       String
+  customerName      String
+  customerPhone     String
+  customerAddress   String?
+  status            OrderStatus @default(PENDING)
+  totalAmount       Decimal     @default(0)
+  remarks           String?
+  createdByUserId   String
+  submittedByUserId String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  submittedAt       DateTime?
+  cancelledAt       DateTime?
+
+  branch        Branch                  @relation(fields: [branchId], references: [id])
+  createdBy     User                    @relation("OrderCreatedBy", fields: [createdByUserId], references: [id])
+  submittedBy   User?                   @relation("OrderSubmittedBy", fields: [submittedByUserId], references: [id])
+  items         OrderItem[]
+  reservations  OrderStockReservation[]
+  statusHistory OrderStatusHistory[]
+
+  @@unique([branchId, orderNumber])
+  @@index([branchId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([customerPhone])
+}
+
+model OrderItem {
+  id               String        @id @default(cuid())
+  orderId          String
+  inventoryItemId  String
+  category         StockCategory
+  itemNameSnapshot String
+  unitSnapshot     String
+  quantity         Decimal
+  price            Decimal
+  lineTotal        Decimal
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  order        Order                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  inventoryItem InventoryItem          @relation(fields: [inventoryItemId], references: [id])
+  reservations OrderStockReservation[]
+
+  @@index([orderId])
+  @@index([inventoryItemId])
+}
+
+model OrderStockReservation {
+  id              String            @id @default(cuid())
+  orderId         String
+  orderItemId     String
+  branchId        String
+  inventoryItemId String
+  quantity        Decimal
+  status          ReservationStatus @default(ACTIVE)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  order         Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem     OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  branch        Branch        @relation(fields: [branchId], references: [id])
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id])
+
+  @@index([orderId])
+  @@index([branchId, inventoryItemId, status])
+  @@index([status])
+}
+
+model OrderStatusHistory {
+  id              String       @id @default(cuid())
+  orderId         String
+  fromStatus      OrderStatus?
+  toStatus        OrderStatus
+  changedByUserId String
+  note            String?
+  createdAt       DateTime     @default(now())
+
+  order     Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedBy User  @relation(fields: [changedByUserId], references: [id])
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+model ManualLowStockAlert {
+  id              String         @id @default(cuid())
+  branchId        String
+  itemName        String
+  inventoryItemId String?
+  category        StockCategory?
+  createdByUserId String
+  createdAt       DateTime       @default(now())
+
+  branch        Branch         @relation(fields: [branchId], references: [id])
+  inventoryItem InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  createdBy     User           @relation(fields: [createdByUserId], references: [id])
+
+  @@index([branchId])
+  @@index([inventoryItemId])
+  @@index([itemName])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  branchId   String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id])
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@index([userId])
+  @@index([branchId])
+  @@index([createdAt])
+  @@index([entityType, entityId])
+}

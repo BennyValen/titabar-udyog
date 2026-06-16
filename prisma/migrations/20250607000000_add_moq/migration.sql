@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "InventoryItem" ADD COLUMN "moq" INTEGER NOT NULL DEFAULT 50;
