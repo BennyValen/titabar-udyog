@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { Table, THead, TR, TH, TD } from "@/components/ui/table";
+import { Table, THead, TR, TH } from "@/components/ui/table";
 import { formatQty } from "@/lib/utils";
 
 function groupByDate(movements: Array<Record<string, unknown>>) {

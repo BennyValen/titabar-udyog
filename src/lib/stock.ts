@@ -720,7 +720,7 @@ export async function getLowStockItems(
       lowStockItems.push({
         inventoryItemId: item.id,
         name: item.name,
-        unit: item.unit,
+        unit: item.unit ?? "",
         category: item.category,
         available,
         moq: item.moq,

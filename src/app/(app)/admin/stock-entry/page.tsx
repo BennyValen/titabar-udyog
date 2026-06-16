@@ -138,9 +138,6 @@ function StockEntryContent() {
     el?.focus();
   };
 
-  const addRowEmpty =
-    !itemQuery.trim() && !selectedItem && !unverified && !qty.trim();
-
   const updateLine = (index: number, patch: Partial<EntryLine>) => {
     setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
   };

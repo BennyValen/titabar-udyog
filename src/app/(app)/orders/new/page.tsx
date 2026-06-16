@@ -125,7 +125,6 @@ export default function NewOrderPage() {
   const [activeCustomerField, setActiveCustomerField] = useState<"name" | "phone" | null>(null);
 
   const [lineWarnings, setLineWarnings] = useState<Record<number, { lowStock: boolean }>>({});
-  const [availableByItemId, setAvailableByItemId] = useState<Record<string, number>>({});
   const [stockWarning, setStockWarning] = useState<{
     lineIndex: number;
     itemName: string;
@@ -225,7 +224,7 @@ export default function NewOrderPage() {
     loadCustomerOrders(c.phone);
   };
 
-  const useThisOrder = (order: PastOrder) => {
+  const applyPastOrder = (order: PastOrder) => {
     setLines(
       order.items.map((item) => ({
         inventoryItemId: item.itemId,
@@ -256,7 +255,7 @@ export default function NewOrderPage() {
     }
     if (e.key === "Enter" && recentOrders[selectedOrderIdx]) {
       e.preventDefault();
-      useThisOrder(recentOrders[selectedOrderIdx]);
+      applyPastOrder(recentOrders[selectedOrderIdx]);
     }
     if (e.key === "Escape") {
       e.preventDefault();
@@ -310,18 +309,6 @@ export default function NewOrderPage() {
     setQty("");
   };
 
-  const resetActiveRow = () => {
-    clearAddRow();
-    setTimeout(() => itemRef.current?.focus(), 0);
-  };
-
-  const exitAddRowToLastLine = () => {
-    clearAddRow();
-    if (lines.length > 0) {
-      setTimeout(() => rowQtyRefs.current[lines.length - 1]?.focus(), 0);
-    }
-  };
-
   const focusAddress = () => {
     addressRef.current?.focus();
   };
@@ -355,7 +342,6 @@ export default function NewOrderPage() {
         }),
       });
       const available = data.availability?.[inventoryItemId] ?? 0;
-      setAvailableByItemId((prev) => ({ ...prev, [inventoryItemId]: available }));
       if (quantity > available) {
         setStockWarning({
           lineIndex,
@@ -402,23 +388,6 @@ export default function NewOrderPage() {
   const handleLineQtyChange = (index: number, rawValue: string) => {
     if (rawValue !== "" && !/^\d+$/.test(rawValue)) return;
     updateLine(index, { quantity: rawValue === "" ? 0 : parseInt(rawValue, 10) });
-  };
-
-  const checkLineQtyOnEnter = (index: number): boolean => {
-    const line = lines[index];
-    if (line.inventoryItemId && branchId) {
-      const available = availableByItemId[line.inventoryItemId];
-      if (available !== undefined && line.quantity > available) {
-        setStockWarning({
-          lineIndex: index,
-          itemName: line.name,
-          requested: line.quantity,
-          available,
-        });
-        return false;
-      }
-    }
-    return true;
   };
 
   const validateRowItemOnEnter = async (index: number): Promise<boolean> => {
@@ -513,7 +482,6 @@ export default function NewOrderPage() {
           method: "POST",
           body: JSON.stringify({ branchId, items }),
         });
-        setAvailableByItemId(data.availability ?? {});
         const byId = new Map(data.warnings.map((w) => [w.inventoryItemId, w]));
         const mapped: Record<number, { lowStock: boolean }> = {};
         lines.forEach((l, i) => {
@@ -529,6 +497,35 @@ export default function NewOrderPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [branchId, lines, stockCheckItems]);
+
+  const addLine = useCallback((overrideQty?: number) => {
+    const name = selectedItem?.name ?? itemQuery.trim();
+    const quantity = overrideQty ?? parseFloat(qty);
+    if (!name || !quantity || quantity <= 0) {
+      setFormError("Enter item name and quantity");
+      return;
+    }
+
+    const isUnverified = unverified || !selectedItem;
+    setLines((prev) => [
+      ...prev,
+      {
+        inventoryItemId: selectedItem?.id,
+        name,
+        unit: activeUnit ?? "",
+        category: activeCategory || "TRADING_ITEM",
+        quantity,
+        unverified: isUnverified,
+        savedName: name,
+        savedQty: quantity,
+        savedInventoryItemId: selectedItem?.id,
+        savedUnverified: isUnverified,
+      },
+    ]);
+    setFormError(null);
+    clearAddRow();
+    setTimeout(() => itemRef.current?.focus(), 0);
+  }, [selectedItem, itemQuery, qty, unverified, activeUnit, activeCategory]);
 
   useEffect(() => {
     if (!stockWarning) return;
@@ -564,7 +561,7 @@ export default function NewOrderPage() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [stockWarning, lines]);
+  }, [stockWarning, lines, addLine]);
 
   useEffect(() => {
     if (!itemNotFound) return;
@@ -580,34 +577,6 @@ export default function NewOrderPage() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [itemNotFound]);
-
-  const addLine = (overrideQty?: number) => {
-    const name = selectedItem?.name ?? itemQuery.trim();
-    const quantity = overrideQty ?? parseFloat(qty);
-    if (!name || !quantity || quantity <= 0) {
-      setFormError("Enter item name and quantity");
-      return;
-    }
-
-    const isUnverified = unverified || !selectedItem;
-    setLines((prev) => [
-      ...prev,
-      {
-        inventoryItemId: selectedItem?.id,
-        name,
-        unit: activeUnit ?? "",
-        category: activeCategory || "TRADING_ITEM",
-        quantity,
-        unverified: isUnverified,
-        savedName: name,
-        savedQty: quantity,
-        savedInventoryItemId: selectedItem?.id,
-        savedUnverified: isUnverified,
-      },
-    ]);
-    setFormError(null);
-    resetActiveRow();
-  };
 
   const submitOrder = async (forceCreate = false) => {
     setSubmitting(true);
@@ -1064,7 +1033,7 @@ export default function NewOrderPage() {
                   size="sm"
                   variant="secondary"
                   className="h-7"
-                  onClick={addLine}
+                  onClick={() => addLine()}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -1120,7 +1089,7 @@ export default function NewOrderPage() {
                     size="sm"
                     variant="secondary"
                     className="shrink-0"
-                    onClick={() => useThisOrder(order)}
+                    onClick={() => applyPastOrder(order)}
                   >
                     Use This Order
                   </Button>

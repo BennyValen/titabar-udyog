@@ -16,7 +16,7 @@ import {
   type InventorySearchItem,
 } from "@/components/orders/item-search-input";
 import { api, ApiError } from "@/lib/fetcher";
-import { cn, formatQty, formatUnit } from "@/lib/utils";
+import { formatQty, formatUnit } from "@/lib/utils";
 
 interface OrderLine {
   inventoryItemId?: string;
@@ -169,11 +169,6 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
     setQty("");
   };
 
-  const resetActiveRow = () => {
-    clearAddRow();
-    setTimeout(() => itemRef.current?.focus(), 0);
-  };
-
   const focusAddress = () => addressRef.current?.focus();
 
   const focusFirstItem = () => {
@@ -315,6 +310,34 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
     [lines]
   );
 
+  const addLine = useCallback((overrideQty?: number) => {
+    const name = selectedItem?.name ?? itemQuery.trim();
+    const quantity = overrideQty ?? parseFloat(qty);
+    if (!name || !quantity || quantity <= 0) {
+      setFormError("Enter item name and quantity");
+      return;
+    }
+    const isUnverified = unverified || !selectedItem;
+    setLines((prev) => [
+      ...prev,
+      {
+        inventoryItemId: selectedItem?.id,
+        name,
+        unit: activeUnit ?? "",
+        category: activeCategory || "TRADING_ITEM",
+        quantity,
+        unverified: isUnverified,
+        savedName: name,
+        savedQty: quantity,
+        savedInventoryItemId: selectedItem?.id,
+        savedUnverified: isUnverified,
+      },
+    ]);
+    setFormError(null);
+    clearAddRow();
+    setTimeout(() => itemRef.current?.focus(), 0);
+  }, [selectedItem, itemQuery, qty, unverified, activeUnit, activeCategory]);
+
   useEffect(() => {
     if (!branchId) {
       setLineWarnings({});
@@ -347,7 +370,7 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [branchId, lines, stockCheckItems]);
+  }, [branchId, lines, stockCheckItems, id]);
 
   useEffect(() => {
     if (!stockWarning) return;
@@ -383,7 +406,7 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [stockWarning, lines]);
+  }, [stockWarning, lines, addLine]);
 
   useEffect(() => {
     if (!itemNotFound) return;
@@ -399,33 +422,6 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [itemNotFound]);
-
-  const addLine = (overrideQty?: number) => {
-    const name = selectedItem?.name ?? itemQuery.trim();
-    const quantity = overrideQty ?? parseFloat(qty);
-    if (!name || !quantity || quantity <= 0) {
-      setFormError("Enter item name and quantity");
-      return;
-    }
-    const isUnverified = unverified || !selectedItem;
-    setLines((prev) => [
-      ...prev,
-      {
-        inventoryItemId: selectedItem?.id,
-        name,
-        unit: activeUnit ?? "",
-        category: activeCategory || "TRADING_ITEM",
-        quantity,
-        unverified: isUnverified,
-        savedName: name,
-        savedQty: quantity,
-        savedInventoryItemId: selectedItem?.id,
-        savedUnverified: isUnverified,
-      },
-    ]);
-    setFormError(null);
-    resetActiveRow();
-  };
 
   const saveOrder = async (forceUpdate = false) => {
     setSubmitting(true);
