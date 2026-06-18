@@ -285,15 +285,15 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
     }, 0);
   };
 
-  const useMaxStock = () => {
+  const confirmRequestedStock = () => {
     if (!stockWarning) return;
-    const { lineIndex, available, isAddRow } = stockWarning;
+    const { lineIndex, requested, isAddRow } = stockWarning;
     setStockWarning(null);
     if (isAddRow) {
-      addLine(available);
+      addLine(requested);
       setTimeout(() => itemRef.current?.focus(), 0);
     } else {
-      updateLine(lineIndex, { quantity: available, savedQty: available });
+      updateLine(lineIndex, { quantity: requested, savedQty: requested });
       setTimeout(() => rowQtyRefs.current[lineIndex]?.focus(), 0);
     }
   };
@@ -382,12 +382,12 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
         e.preventDefault();
         setStockWarning(null);
         if (warning.isAddRow) {
-          addLine(warning.available);
+          addLine(warning.requested);
           setTimeout(() => itemRef.current?.focus(), 0);
         } else {
           updateLine(warning.lineIndex, {
-            quantity: warning.available,
-            savedQty: warning.available,
+            quantity: warning.requested,
+            savedQty: warning.requested,
           });
           setTimeout(() => rowQtyRefs.current[warning.lineIndex]?.focus(), 0);
         }
@@ -544,31 +544,54 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
             tabIndex={-1}
             className="w-[380px] rounded-xl bg-white p-7 shadow-2xl outline-none"
           >
-            <h3 className="mb-2 text-center text-[17px] font-bold">Stock Exceeded</h3>
-            <p className="mb-5 text-center text-sm text-gray-500">
-              Requested <strong>{formatQty(stockWarning.requested)}</strong> of{" "}
-              <strong>{stockWarning.itemName}</strong>, but only{" "}
-              <strong>{formatQty(stockWarning.available)}</strong> available.
+            <div className="mb-4 text-center text-4xl">⚠️</div>
+            <h3 className="mb-2 text-center text-[17px] font-bold text-gray-900">
+              Stock Is Low
+            </h3>
+            <p className="mb-5 text-center text-sm leading-relaxed text-gray-500">
+              There are only{" "}
+              <strong className="text-green-600">{formatQty(stockWarning.available)}</strong>{" "}
+              units available for <strong>{stockWarning.itemName}</strong>. Do you want to use{" "}
+              <strong className="text-red-600">{formatQty(stockWarning.requested)}</strong> qty
+              and continue?
             </p>
+            <div className="mb-5">
+              <div className="mb-1.5 flex justify-between text-xs text-gray-500">
+                <span>Available stock</span>
+                <span>{formatQty(stockWarning.available)} units</span>
+              </div>
+              <div className="h-2 rounded-full bg-gray-200">
+                <div
+                  className="h-2 rounded-full bg-green-600"
+                  style={{
+                    width: `${Math.min((stockWarning.available / stockWarning.requested) * 100, 100)}%`,
+                  }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-amber-700">
+                If submitted, stock may become{" "}
+                <strong>{formatQty(stockWarning.available - stockWarning.requested)}</strong>.
+              </p>
+            </div>
             <div className="flex gap-2.5">
               <button
                 type="button"
                 onClick={dismissStockWarning}
-                className="flex-1 rounded-lg border px-2.5 py-2.5 text-[13px] font-semibold"
+                className="flex-1 cursor-pointer rounded-lg border border-gray-200 bg-white px-2.5 py-2.5 text-[13px] font-semibold text-gray-700"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 autoFocus
-                onClick={useMaxStock}
-                className="flex-1 rounded-lg bg-blue-600 px-2.5 py-2.5 text-[13px] font-semibold text-white"
+                onClick={confirmRequestedStock}
+                className="flex-1 cursor-pointer rounded-lg border-none bg-blue-600 px-2.5 py-2.5 text-[13px] font-semibold text-white"
               >
-                Use Max ({formatQty(stockWarning.available)})
+                Yes, use {formatQty(stockWarning.requested)}
               </button>
             </div>
-            <p className="mt-3 text-center text-[11px] text-gray-400">
-              Enter = Use Max · Esc = Cancel
+            <p className="mb-0 mt-3 text-center text-[11px] text-gray-400">
+              Enter = Yes · Esc = Cancel
             </p>
           </div>
         </div>
