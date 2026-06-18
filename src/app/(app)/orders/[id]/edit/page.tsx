@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, use } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,7 +53,6 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
   const rowNameRefs = useRef<(HTMLInputElement | null)[]>([]);
   const rowQtyRefs = useRef<(HTMLInputElement | null)[]>([]);
   const addRef = useRef<HTMLButtonElement>(null);
-  const stockPopupRef = useRef<HTMLDivElement>(null);
   const stockWarningModalRef = useRef<HTMLDivElement>(null);
   const itemNotFoundModalRef = useRef<HTMLDivElement>(null);
 
@@ -73,8 +71,6 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
   const [unverified, setUnverified] = useState(false);
   const [qty, setQty] = useState("");
 
-  const [stockWarnings, setStockWarnings] = useState<OrderStockWarning[]>([]);
-  const [showStockPopup, setShowStockPopup] = useState(false);
   const [lineWarnings, setLineWarnings] = useState<Record<number, { lowStock: boolean }>>({});
   const [stockWarning, setStockWarning] = useState<{
     lineIndex: number;
@@ -257,7 +253,7 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
         updateLine(index, {
           name: exact.name,
           inventoryItemId: exact.id,
-          unit: exact.unit ?? "",
+          unit: exact.unit,
           category: exact.category,
           unverified: false,
         });
@@ -285,6 +281,16 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
     }, 0);
   };
 
+  const focusAfterQtyConfirmed = (lineIndex: number) => {
+    setTimeout(() => {
+      if (lineIndex < lines.length - 1) {
+        rowNameRefs.current[lineIndex + 1]?.focus();
+      } else {
+        itemRef.current?.focus();
+      }
+    }, 0);
+  };
+
   const confirmRequestedStock = () => {
     if (!stockWarning) return;
     const { lineIndex, requested, isAddRow } = stockWarning;
@@ -294,7 +300,7 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
       setTimeout(() => itemRef.current?.focus(), 0);
     } else {
       updateLine(lineIndex, { quantity: requested, savedQty: requested });
-      setTimeout(() => rowQtyRefs.current[lineIndex]?.focus(), 0);
+      focusAfterQtyConfirmed(lineIndex);
     }
   };
 
@@ -389,7 +395,7 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
             quantity: warning.requested,
             savedQty: warning.requested,
           });
-          setTimeout(() => rowQtyRefs.current[warning.lineIndex]?.focus(), 0);
+          focusAfterQtyConfirmed(warning.lineIndex);
         }
       }
       if (e.key === "Escape") {
@@ -423,7 +429,7 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [itemNotFound]);
 
-  const saveOrder = async (forceUpdate = false) => {
+  const saveOrder = async () => {
     setSubmitting(true);
     try {
       await api(`/api/orders/${id}`, {
@@ -433,7 +439,6 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
           customerPhone,
           customerAddress,
           remarks,
-          forceUpdate,
           items: lines.map((l) => ({
             inventoryItemId: l.inventoryItemId,
             itemName: l.unverified || !l.inventoryItemId ? l.name : undefined,
@@ -452,7 +457,6 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
 
   const handleSave = async () => {
     setFormError(null);
-    setShowStockPopup(false);
     if (!customerName.trim()) {
       setFormError("Customer name is required");
       focus(nameRef);
@@ -468,40 +472,20 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
       focus(itemRef);
       return;
     }
-    const items = stockCheckItems();
-    if (items.length > 0 && branchId) {
-      try {
-        const data = await api<{ warnings: OrderStockWarning[] }>(
-          "/api/orders/stock-warnings",
-          { method: "POST", body: JSON.stringify({ branchId, orderId: id, items }) }
-        );
-        if (data.warnings.length > 0) {
-          setStockWarnings(data.warnings);
-          setShowStockPopup(true);
-          setTimeout(() => stockPopupRef.current?.focus(), 0);
-          return;
-        }
-      } catch {
-        /* proceed */
-      }
-    }
-    await saveOrder(false);
+
+    await saveOrder();
   };
 
   if (loading) return <p className="text-sm text-muted">Loading order...</p>;
 
   return (
     <div className="mx-auto max-w-3xl space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold">Edit Order</h1>
-          <p className="text-xs text-muted">{orderNumber} · Enter → next · Esc → back</p>
-        </div>
-        <Link href={`/orders/${id}`}>
-          <Button variant="secondary" size="sm">
-            Cancel
-          </Button>
-        </Link>
+      <div>
+        <h1 className="text-xl font-bold">Edit Order</h1>
+        <p className="text-xs text-muted">
+          {orderNumber ? `${orderNumber} · ` : ""}
+          Keyboard: Enter → next · Esc → clear / back
+        </p>
       </div>
 
       {itemNotFound && (
@@ -511,8 +495,9 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
             tabIndex={-1}
             className="w-[380px] rounded-xl bg-white p-7 shadow-2xl outline-none"
           >
-            <h3 className="mb-2 text-center text-[17px] font-bold">Item Not Found</h3>
-            <p className="mb-5 text-center text-sm text-gray-500">
+            <div className="mb-4 text-center text-4xl">❌</div>
+            <h3 className="mb-2 text-center text-[17px] font-bold text-gray-900">Item Not Found</h3>
+            <p className="mb-5 text-center text-sm leading-relaxed text-gray-500">
               {itemNotFound.name ? (
                 <>
                   <strong>{itemNotFound.name}</strong> was not found in the master list.
@@ -520,6 +505,8 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
               ) : (
                 "Please enter an item name."
               )}
+              <br />
+              Please check the spelling and try again.
             </p>
             <button
               type="button"
@@ -529,10 +516,13 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
                 setItemNotFound(null);
                 setTimeout(() => rowNameRefs.current[idx]?.focus(), 0);
               }}
-              className="w-full rounded-lg bg-blue-600 px-2.5 py-2.5 text-[13px] font-semibold text-white"
+              className="w-full cursor-pointer rounded-lg border-none bg-blue-600 px-2.5 py-2.5 text-[13px] font-semibold text-white"
             >
               OK
             </button>
+            <p className="mb-0 mt-3 text-center text-[11px] text-gray-400">
+              Press Enter or Esc to dismiss
+            </p>
           </div>
         </div>
       )}
@@ -603,41 +593,6 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
         </p>
       )}
 
-      {showStockPopup && stockWarnings.length > 0 && (
-        <div
-          ref={stockPopupRef}
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              setShowStockPopup(false);
-              void saveOrder(true);
-            }
-            if (e.key === "Escape") {
-              e.preventDefault();
-              setShowStockPopup(false);
-            }
-          }}
-          className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm outline-none ring-2 ring-amber-400"
-        >
-          <p className="font-semibold">⚠️ STOCK WARNING</p>
-          <ol className="mt-2 list-decimal space-y-2 pl-5">
-            {stockWarnings.map((w) => (
-              <li key={w.inventoryItemId}>
-                <span className="font-medium">{w.itemName}</span>
-                <span className="ml-2 text-xs">
-                  Avail {formatQty(w.availableQty)}
-                  {w.exceedsStock && ` · Requested ${formatQty(w.requestedQty)}`}
-                  {w.lowStock && " · LOW STOCK"}
-                </span>
-              </li>
-            ))}
-          </ol>
-          <p className="mt-3 font-medium">Save anyway?</p>
-          <p className="text-xs text-muted">Enter = Yes · Esc = No</p>
-        </div>
-      )}
-
       <Card title="Customer">
         <div className="grid gap-2 sm:grid-cols-2">
           <div>
@@ -687,6 +642,7 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
                 onFieldKeyDown(e, {
                   value: customerAddress,
                   onClear: () => setCustomerAddress(""),
+                  next: itemRef,
                   prev: phoneRef,
                 });
               }}
@@ -736,8 +692,11 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
                       }
                       if (e.key === "Escape") {
                         e.preventDefault();
-                        if (i === 0) addressRef.current?.focus();
-                        else rowQtyRefs.current[i - 1]?.focus();
+                        if (i === 0) {
+                          addressRef.current?.focus();
+                        } else {
+                          rowQtyRefs.current[i - 1]?.focus();
+                        }
                       }
                     }}
                     className="h-7 text-sm"
@@ -772,8 +731,11 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
                           const ok = await tryStockWarning(i, itemId, l.name, quantity, false);
                           if (!ok) return;
                           setTimeout(() => {
-                            if (i < lines.length - 1) rowNameRefs.current[i + 1]?.focus();
-                            else itemRef.current?.focus();
+                            if (i < lines.length - 1) {
+                              rowNameRefs.current[i + 1]?.focus();
+                            } else {
+                              itemRef.current?.focus();
+                            }
                           }, 0);
                         })();
                         return;
@@ -876,6 +838,12 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
                   variant="secondary"
                   className="h-7"
                   onClick={() => addLine()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addLine();
+                    }
+                  }}
                 >
                   Add
                 </Button>
@@ -886,7 +854,16 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
       </Card>
 
       <div className="flex justify-end gap-2">
-        <Button onClick={() => void handleSave()} disabled={submitting || lines.length === 0}>
+        <Button
+          onClick={() => void handleSave()}
+          disabled={submitting || lines.length === 0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void handleSave();
+            }
+          }}
+        >
           {submitting ? "Saving..." : "Save Changes"}
         </Button>
       </div>

@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import { assertBranchAccess, requireAuth } from "@/lib/auth";
 import { jsonOk, jsonError, handleApiError } from "@/lib/api";
 import {
-  checkStockAvailability,
   logAudit,
   releaseOrderReservations,
   StockError,
@@ -87,18 +86,6 @@ export async function PATCH(
     }
 
     const resolvedItems = body.items ? await resolveOrderItems(body.items) : null;
-
-    if (resolvedItems) {
-      const stockChecks = await checkStockAvailability(
-        existing.branchId,
-        resolvedItems.map((i) => ({ inventoryItemId: i.inv.id, quantity: i.quantity })),
-        id
-      );
-      const insufficient = stockChecks.filter((c) => !c.sufficient);
-      if (insufficient.length > 0 && !body.forceUpdate) {
-        return jsonError("Insufficient stock", 409, { warnings: insufficient });
-      }
-    }
 
     const order = await prisma.$transaction(async (tx) => {
       if (existing.status === "PENDING") {
