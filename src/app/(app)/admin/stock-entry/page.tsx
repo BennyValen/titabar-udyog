@@ -12,6 +12,7 @@ import {
   type InventorySearchItem,
 } from "@/components/orders/item-search-input";
 import { RecentMovementsTable } from "@/components/stocks/recent-movements-table";
+import { BranchSelector } from "@/components/branch-selector";
 import { api, ApiError } from "@/lib/fetcher";
 import { cn } from "@/lib/utils";
 
@@ -242,7 +243,7 @@ function StockEntryContent() {
         <p className="text-xs text-muted">Enter → next · Esc → clear / back · Keyboard-first</p>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {(["IN", "OUT"] as Direction[]).map((d) => (
           <button
             key={d}
@@ -256,6 +257,12 @@ function StockEntryContent() {
             {d}
           </button>
         ))}
+        <BranchSelector
+          value={branchId}
+          onChange={setBranchId}
+          allowAll={false}
+          className="w-48"
+        />
       </div>
 
       {formError && (
