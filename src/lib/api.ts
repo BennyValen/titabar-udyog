@@ -13,6 +13,26 @@ export function jsonError(message: string, status = 400, extra?: Record<string, 
   return NextResponse.json({ error: message, ...extra }, { status });
 }
 
+function prismaUniqueConstraintMessage(
+  error: Prisma.PrismaClientKnownRequestError
+): string | null {
+  if (error.code !== "P2002") return null;
+
+  const target = error.meta?.target;
+  const fields = Array.isArray(target)
+    ? target.map(String)
+    : [String(target ?? "")];
+
+  if (fields.some((field) => field.includes("phone"))) {
+    return "This phone number is already in use. Please use a different number.";
+  }
+  if (fields.some((field) => field.includes("code"))) {
+    return "This branch code is already in use. Please use a different code.";
+  }
+
+  return "This value is already in use. Please use a different one.";
+}
+
 export function handleApiError(error: unknown) {
   if (error instanceof AuthError) {
     return jsonError(error.message, error.status);
@@ -50,6 +70,10 @@ export function handleApiError(error: unknown) {
     if (["P1001", "P1002", "P1008", "P1017", "P2024"].includes(error.code)) {
       console.error("Database connection error:", error.code, error.message);
       return jsonError("Database temporarily unavailable. Please try again.", 503);
+    }
+    const uniqueMessage = prismaUniqueConstraintMessage(error);
+    if (uniqueMessage) {
+      return jsonError(uniqueMessage, 400);
     }
   }
 
