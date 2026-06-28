@@ -1,14 +1,20 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { hashPassword, requireAdmin } from "@/lib/auth";
-import { jsonOk, jsonError, handleApiError } from "@/lib/api";
+import { jsonOk, handleApiError } from "@/lib/api";
 import { logAudit } from "@/lib/stock";
 import { z } from "zod";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
   code: z.string().min(2).max(10).optional(),
-  phone: z.string().min(10).optional(),
+  phone: z
+    .string()
+    .optional()
+    .transform((v) => {
+      const digits = (v ?? "").replace(/\D/g, "");
+      return digits.length >= 10 ? digits.slice(-10) : undefined;
+    }),
   isActive: z.boolean().optional(),
   username: z.string().min(1).optional(),
   password: z.string().min(4).optional(),
@@ -61,10 +67,7 @@ export async function PATCH(
           where: { id: branchUser.id },
           data: userData,
         });
-      } else if (loginPhone) {
-        if (!password) {
-          throw new Error("Password is required to create branch login");
-        }
+      } else if (loginPhone && password) {
         branchUser = await tx.user.create({
           data: {
             name: loginName,
@@ -95,9 +98,6 @@ export async function PATCH(
     await logAudit(admin.id, "UPDATE", "Branch", id, id, body);
     return jsonOk({ branch: result });
   } catch (error) {
-    if (error instanceof Error && error.message === "Password is required to create branch login") {
-      return jsonError(error.message, 400);
-    }
     return handleApiError(error);
   }
 }

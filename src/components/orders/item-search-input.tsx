@@ -107,7 +107,6 @@ export function ItemSearchInput({
       return;
     }
 
-    setLoading(true);
     const timer = setTimeout(() => {
       void runSearch(trimmedValue);
     }, DEBOUNCE_MS);
@@ -134,6 +133,21 @@ export function ItemSearchInput({
       onEnterNext?.();
     });
   };
+
+  const beginSearch = useCallback(
+    (term: string) => {
+      const trimmed = term.trim();
+      if (trimmed.length < 1) {
+        resetSearch();
+        return;
+      }
+      setLoading(true);
+      setSearched(true);
+      setHighlight(-1);
+      void runSearch(trimmed);
+    },
+    [resetSearch, runSearch]
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
@@ -195,11 +209,19 @@ export function ItemSearchInput({
 
   const handleChange = (text: string) => {
     onQueryChange(text);
-    if (selected && text !== selected.name) {
+
+    // Any keystroke clears a prior selection — never block search on old state.
+    if (selected) {
       onSelect(null);
       onUnverifiedChange(false);
     }
-    if (!text.trim()) {
+
+    const trimmed = text.trim();
+    if (trimmed.length > 0) {
+      setLoading(true);
+      setSearched(true);
+      setHighlight(-1);
+    } else {
       onUnverifiedChange(false);
       resetSearch();
     }
@@ -207,9 +229,13 @@ export function ItemSearchInput({
 
   const handleFocus = () => {
     setFocused(true);
-    if (trimmedValue.length > 0) {
-      if (selected) onSelect(null);
-      void runSearch(trimmedValue);
+    const trimmed = value.trim();
+    if (trimmed.length > 0) {
+      if (selected) {
+        onSelect(null);
+        onUnverifiedChange(false);
+      }
+      beginSearch(trimmed);
     }
   };
 
