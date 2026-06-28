@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { AuthError } from "./auth";
 import { StockError } from "./stock";
 import { ZodError } from "zod";
+import { formatZodError } from "./branch-validation";
 
 export function jsonOk<T>(data: T, status = 200) {
   return NextResponse.json(data, { status });
@@ -20,7 +21,7 @@ export function handleApiError(error: unknown) {
     return jsonError(error.message, 400);
   }
   if (error instanceof ZodError) {
-    return jsonError("Validation failed", 400, { details: error.flatten() });
+    return jsonError(formatZodError(error), 400, { details: error.flatten() });
   }
 
   const databaseUrl = process.env.DATABASE_URL?.trim();

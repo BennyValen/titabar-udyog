@@ -2,17 +2,8 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { hashPassword, requireAdmin } from "@/lib/auth";
 import { jsonOk, jsonError, handleApiError } from "@/lib/api";
+import { branchUpdateSchema } from "@/lib/branch-validation";
 import { logAudit } from "@/lib/stock";
-import { z } from "zod";
-
-const updateSchema = z.object({
-  name: z.string().min(1).optional(),
-  code: z.string().min(2).max(10).optional(),
-  phone: z.string().min(10).optional(),
-  isActive: z.boolean().optional(),
-  username: z.string().min(1).optional(),
-  password: z.string().min(4).optional(),
-});
 
 function mapBranchWithUser<T extends { users: Array<{ id: string; name: string; phone: string; isActive: boolean }> }>(
   branch: T
@@ -28,7 +19,7 @@ export async function PATCH(
   try {
     const admin = await requireAdmin();
     const { id } = await params;
-    const body = updateSchema.parse(await req.json());
+    const body = branchUpdateSchema.parse(await req.json());
 
     const { username, password, ...branchFields } = body;
     if (branchFields.code) {

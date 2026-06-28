@@ -2,17 +2,8 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { hashPassword, requireAdmin } from "@/lib/auth";
 import { jsonOk, handleApiError } from "@/lib/api";
+import { userUpdateSchema } from "@/lib/branch-validation";
 import { logAudit } from "@/lib/stock";
-import { z } from "zod";
-
-const updateSchema = z.object({
-  name: z.string().min(1).optional(),
-  phone: z.string().min(10).optional(),
-  password: z.string().min(4).optional(),
-  role: z.enum(["ADMIN", "BRANCH_USER"]).optional(),
-  branchId: z.string().optional().nullable(),
-  isActive: z.boolean().optional(),
-});
 
 export async function PATCH(
   req: NextRequest,
@@ -21,7 +12,7 @@ export async function PATCH(
   try {
     const admin = await requireAdmin();
     const { id } = await params;
-    const body = updateSchema.parse(await req.json());
+    const body = userUpdateSchema.parse(await req.json());
 
     const data: Record<string, unknown> = { ...body };
     if (body.password) {

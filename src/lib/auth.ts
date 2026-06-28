@@ -4,6 +4,9 @@ import { cache } from "react";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
 import type { UserRole } from "@prisma/client";
+import { normalizePhone } from "./phone";
+
+export { normalizePhone };
 
 const SESSION_COOKIE = "titiabar_session";
 const MASTER_LIST_UNLOCK_COOKIE = "titiabar_master_list_unlock";
@@ -36,12 +39,6 @@ export async function hashPassword(password: string) {
 
 export async function verifyPassword(password: string, hash: string) {
   return bcrypt.compare(password, hash);
-}
-
-export function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length < 10) return digits;
-  return digits.slice(-10);
 }
 
 export async function findUserByLogin(login: string) {

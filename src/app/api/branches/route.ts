@@ -2,16 +2,9 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { hashPassword, requireAdmin, requireAuth } from "@/lib/auth";
 import { jsonOk, handleApiError } from "@/lib/api";
+import { branchCreateSchema } from "@/lib/branch-validation";
+import { generateUniqueBranchCode } from "@/lib/branch-code";
 import { logAudit } from "@/lib/stock";
-import { z } from "zod";
-
-const createSchema = z.object({
-  name: z.string().min(1),
-  code: z.string().min(2).max(10),
-  phone: z.string().min(10),
-  username: z.string().min(1),
-  password: z.string().min(4),
-});
 
 function mapBranchWithUser<T extends { users: Array<{ id: string; name: string; phone: string; isActive: boolean }> }>(
   branch: T
@@ -49,13 +42,18 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const admin = await requireAdmin();
-    const body = createSchema.parse(await req.json());
+    const body = branchCreateSchema.parse(await req.json());
+    const username = body.username?.trim() || body.name.trim();
 
     const branch = await prisma.$transaction(async (tx) => {
+      const code =
+        body.code?.toUpperCase() ??
+        (await generateUniqueBranchCode(body.name.trim(), tx));
+
       const created = await tx.branch.create({
         data: {
-          name: body.name,
-          code: body.code.toUpperCase(),
+          name: body.name.trim(),
+          code,
           phone: body.phone,
         },
       });
@@ -63,7 +61,7 @@ export async function POST(req: NextRequest) {
       const passwordHash = await hashPassword(body.password);
       await tx.user.create({
         data: {
-          name: body.username,
+          name: username,
           phone: body.phone,
           passwordHash,
           role: "BRANCH_USER",
@@ -76,8 +74,8 @@ export async function POST(req: NextRequest) {
 
     await logAudit(admin.id, "CREATE", "Branch", branch.id, branch.id, {
       name: body.name,
-      code: body.code,
-      username: body.username,
+      code: branch.code,
+      username,
     });
     return jsonOk({ branch }, 201);
   } catch (error) {

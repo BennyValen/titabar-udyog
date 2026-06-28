@@ -9,7 +9,8 @@ import { Modal } from "@/components/ui/modal";
 import { api, ApiError } from "@/lib/fetcher";
 import { cn } from "@/lib/utils";
 import { modalFieldKeyDown, setModalFieldRef } from "@/lib/modal-field-nav";
-import { Skeleton, SkeletonTable } from "@/components/ui/skeleton";
+import { normalizePhone } from "@/lib/phone";
+import { SkeletonTable } from "@/components/ui/skeleton";
 
 interface BranchUser {
   id: string;
@@ -177,46 +178,68 @@ export default function BranchesPage() {
     return true;
   };
 
+  const validateBranchForm = (
+    form: BranchForm,
+    needsNewLogin: boolean
+  ): string | null => {
+    if (!form.name.trim()) return "Branch name is required";
+    const phone = normalizePhone(form.phone);
+    if (phone.length < 10) return "Phone must be at least 10 digits";
+    if (needsNewLogin && !form.password) {
+      return "Password is required to create branch login";
+    }
+    return null;
+  };
+
   const saveAdd = async () => {
+    const formError = validateBranchForm(form, true);
+    if (formError) {
+      setPasswordError(formError);
+      return;
+    }
     if (!validatePasswords(form, true, setPasswordError)) return;
     setSaving(true);
     try {
+      const phone = normalizePhone(form.phone);
+      const username = form.username.trim() || form.name.trim();
       await api("/api/branches", {
         method: "POST",
         body: JSON.stringify({
           name: form.name.trim(),
-          code: form.code.trim(),
-          phone: form.phone.trim(),
-          username: form.username.trim(),
+          phone,
+          username,
           password: form.password,
         }),
       });
       closeModal();
       await load();
-      toast("Branch created successfully");
+      toast("Branch and login account created successfully");
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : "Failed to create branch");
+      const message = err instanceof ApiError ? err.message : "Failed to create branch";
+      setPasswordError(message);
+      toast(message);
     } finally {
       setSaving(false);
     }
   };
 
   const saveEdit = async () => {
-    if (!validatePasswords(form, false, setPasswordError)) return;
-
     const editingBranch = branches.find((b) => b.id === editId);
     const needsNewLogin = !editingBranch?.branchUser;
-    if (needsNewLogin && !form.password) {
-      setPasswordError("Password is required to create branch login");
+    const formError = validateBranchForm(form, needsNewLogin);
+    if (formError) {
+      setPasswordError(formError);
       return;
     }
+    if (!validatePasswords(form, false, setPasswordError)) return;
 
     setSaving(true);
     try {
+      const phone = normalizePhone(form.phone);
       const loginName = form.username.trim() || form.name.trim();
       const payload: Record<string, unknown> = {
         name: loginName,
-        phone: form.phone.trim(),
+        phone,
         isActive: form.isActive,
         username: loginName,
       };
@@ -232,7 +255,11 @@ export default function BranchesPage() {
       );
       closeModal();
       await load();
-      toast("Branch updated successfully");
+      toast(
+        needsNewLogin
+          ? "Branch login account created successfully"
+          : "Branch updated successfully"
+      );
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Failed to update branch";
       setPasswordError(message);
@@ -243,9 +270,13 @@ export default function BranchesPage() {
   };
 
   const saveAdminEdit = async () => {
-    const phone = adminForm.phone.trim();
+    const phone = normalizePhone(adminForm.phone);
     if (phone.length < 10) {
       setAdminPasswordError("Phone must be at least 10 digits");
+      return;
+    }
+    if (!adminForm.username.trim()) {
+      setAdminPasswordError("Username is required");
       return;
     }
     if (!validatePasswords(adminForm, false, setAdminPasswordError)) return;
@@ -571,7 +602,10 @@ function LoginCredentialsFields({
         />
         {passwordError && <p className="text-sm text-red-600">{passwordError}</p>}
         {mode === "edit" && (
-          <p className="text-xs text-muted">Leave password blank to keep the current password.</p>
+          <p className="text-xs text-muted">
+            Leave password blank to keep the current password. If this branch has no login
+            yet, enter a password to create the account.
+          </p>
         )}
       </div>
     </div>
@@ -594,6 +628,7 @@ function BranchFormFields({
     (index: number) => (e: React.KeyboardEvent) => modalFieldKeyDown(e, fieldRefs.current, index),
     []
   );
+  const credentialsStartIndex = mode === "edit" ? 3 : 2;
 
   return (
     <div className="space-y-5">
@@ -616,15 +651,19 @@ function BranchFormFields({
             onChange={(e) => onChange({ phone: e.target.value })}
             onKeyDown={fieldKeyDown(1)}
           />
-          <Input
-            ref={(el) => setModalFieldRef(fieldRefs.current, 2, el)}
-            placeholder="Branch Code (e.g. MAIN)"
-            value={form.code}
-            readOnly={mode === "edit"}
-            onChange={(e) => onChange({ code: e.target.value.toUpperCase() })}
-            onKeyDown={fieldKeyDown(2)}
-            className={cn(mode === "edit" && "bg-slate-50 text-muted")}
-          />
+          {mode === "edit" && (
+            <Input
+              ref={(el) => setModalFieldRef(fieldRefs.current, 2, el)}
+              placeholder="Branch Code"
+              value={form.code}
+              readOnly
+              onKeyDown={fieldKeyDown(2)}
+              className="bg-slate-50 text-muted"
+            />
+          )}
+          {mode === "add" && (
+            <p className="text-xs text-muted">Branch code will be generated automatically.</p>
+          )}
         </div>
       </div>
 
@@ -636,7 +675,7 @@ function BranchFormFields({
         passwordError={passwordError}
         onChange={onChange}
         fieldRefs={fieldRefs}
-        fieldStartIndex={3}
+        fieldStartIndex={credentialsStartIndex}
       />
 
       {mode === "edit" && (
@@ -644,10 +683,10 @@ function BranchFormFields({
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Status</p>
           <div className="flex gap-2">
             <button
-              ref={(el) => setModalFieldRef(fieldRefs.current, 6, el)}
+              ref={(el) => setModalFieldRef(fieldRefs.current, credentialsStartIndex + 3, el)}
               type="button"
               onClick={() => onChange({ isActive: true })}
-              onKeyDown={fieldKeyDown(6)}
+              onKeyDown={fieldKeyDown(credentialsStartIndex + 3)}
               className={cn(
                 "rounded-md px-4 py-2 text-sm font-medium",
                 form.isActive ? "bg-primary text-white" : "bg-slate-100 text-slate-700"
@@ -656,10 +695,10 @@ function BranchFormFields({
               Active
             </button>
             <button
-              ref={(el) => setModalFieldRef(fieldRefs.current, 7, el)}
+              ref={(el) => setModalFieldRef(fieldRefs.current, credentialsStartIndex + 4, el)}
               type="button"
               onClick={() => onChange({ isActive: false })}
-              onKeyDown={fieldKeyDown(7)}
+              onKeyDown={fieldKeyDown(credentialsStartIndex + 4)}
               className={cn(
                 "rounded-md px-4 py-2 text-sm font-medium",
                 !form.isActive ? "bg-primary text-white" : "bg-slate-100 text-slate-700"
