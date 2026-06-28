@@ -56,8 +56,7 @@ export function ItemSearchInput({
   const [highlight, setHighlight] = useState(-1);
 
   const trimmedValue = value.trim();
-  const showDropdown =
-    focused && trimmedValue.length >= 1 && (loading || searched);
+  const showDropdown = focused && trimmedValue.length >= 1;
 
   const resetSearch = useCallback(() => {
     searchSeqRef.current += 1;
@@ -201,6 +200,8 @@ export function ItemSearchInput({
         setHighlight(-1);
         setSuggestions([]);
         setLoading(false);
+        const el = typeof ref === "object" && ref !== null && "current" in ref ? ref.current : internalRef.current;
+        el?.blur();
         return;
       }
       onEscape?.();
@@ -263,7 +264,7 @@ export function ItemSearchInput({
                 <Skeleton className="h-4 w-full" />
               </li>
             ))}
-          {!loading && suggestions.length === 0 && (
+          {!loading && searched && suggestions.length === 0 && (
             <li className="px-3 py-2 text-sm text-muted">No items found</li>
           )}
           {!loading &&
