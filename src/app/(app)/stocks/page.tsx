@@ -12,6 +12,7 @@ import { RecentMovementsTable } from "@/components/stocks/recent-movements-table
 import { LowStockIndicator } from "@/components/stocks/low-stock-indicator";
 import { BranchSelector } from "@/components/branch-selector";
 import { StockReportDownloadModal } from "@/components/stocks/stock-report-download-modal";
+import { Modal } from "@/components/ui/modal";
 import { api } from "@/lib/fetcher";
 import {
   buildMovementDateParams,
@@ -29,6 +30,25 @@ type TabKey = Category | "ALL";
 
 const PAGE_SIZE = 50;
 const MOVEMENTS_PAGE_SIZE = 20;
+
+interface StockReservation {
+  orderId: string;
+  orderNumber: string;
+  customerName: string;
+  customerPhone: string;
+  quantity: number;
+  orderStatus: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+interface ReservationModalState {
+  itemName: string;
+  itemUnit: string;
+  loading: boolean;
+  totalReserved: number;
+  reservations: StockReservation[];
+}
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "ALL", label: "All" },
@@ -90,6 +110,39 @@ export default function StocksPage() {
   const [pdfMovementCategory, setPdfMovementCategory] = useState<ReportCategory>("ALL");
   const [dateFilter, setDateFilter] = useState<DateFilterState>(defaultDateFilter);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [reservationModal, setReservationModal] = useState<ReservationModalState | null>(null);
+
+  const openReservations = async (balance: Record<string, unknown>) => {
+    const inv = balance.inventoryItem as { id: string; name: string; unit: string | null };
+    setReservationModal({
+      itemName: inv.name,
+      itemUnit: inv.unit || "",
+      loading: true,
+      totalReserved: 0,
+      reservations: [],
+    });
+    try {
+      const data = await api<{
+        totalReserved: number;
+        reservations: StockReservation[];
+      }>(`/api/stocks/reservations?branchId=${branchId}&itemId=${inv.id}`);
+      setReservationModal({
+        itemName: inv.name,
+        itemUnit: inv.unit || "",
+        loading: false,
+        totalReserved: data.totalReserved,
+        reservations: data.reservations,
+      });
+    } catch {
+      setReservationModal({
+        itemName: inv.name,
+        itemUnit: inv.unit || "",
+        loading: false,
+        totalReserved: 0,
+        reservations: [],
+      });
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -336,6 +389,7 @@ export default function StocksPage() {
                   {balances.map((b) => {
                   const inv = b.inventoryItem as { name: string; unit: string };
                   const available = Number(b.availableQty);
+                  const reserved = Number(b.reservedQty);
                   const moq = Number(b.moq ?? (b.inventoryItem as { moq?: number }).moq ?? 0);
                   return (
                     <TR key={b.id as string}>
@@ -343,7 +397,19 @@ export default function StocksPage() {
                       <TD className="text-muted">{formatUnit(inv.unit)}</TD>
                       <TD><Badge status={b.category as string} /></TD>
                       <TD>{formatQty(Number(b.onHandQty))}</TD>
-                      <TD>{formatQty(Number(b.reservedQty))}</TD>
+                      <TD>
+                        {reserved > 0 ? (
+                          <button
+                            type="button"
+                            className="font-medium text-primary underline-offset-2 hover:underline"
+                            onClick={() => openReservations(b)}
+                          >
+                            {formatQty(reserved)}
+                          </button>
+                        ) : (
+                          formatQty(reserved)
+                        )}
+                      </TD>
                       <TD className="font-medium">{formatQty(available)}</TD>
                       <TD>
                         <LowStockIndicator available={available} moq={moq} />
@@ -408,6 +474,82 @@ export default function StocksPage() {
           </Card>
         </>
       )}
+
+      <Modal
+        open={reservationModal !== null}
+        onClose={() => setReservationModal(null)}
+        title={
+          reservationModal
+            ? `Reserved — ${reservationModal.itemName}${reservationModal.itemUnit ? ` (${formatUnit(reservationModal.itemUnit)})` : ""}`
+            : "Reserved Stock"
+        }
+        footer={
+          <Button variant="secondary" onClick={() => setReservationModal(null)}>
+            Close
+          </Button>
+        }
+      >
+        {reservationModal?.loading ? (
+          <Table>
+            <THead>
+              <TR>
+                <TH>Order #</TH>
+                <TH>Customer</TH>
+                <TH>Phone</TH>
+                <TH>Qty</TH>
+                <TH>Date</TH>
+              </TR>
+            </THead>
+            <SkeletonTable rows={3} cols={5} />
+          </Table>
+        ) : reservationModal && reservationModal.reservations.length === 0 ? (
+          <p className="text-sm text-muted">No pending reservations for this item.</p>
+        ) : reservationModal ? (
+          <div className="space-y-3">
+            <p className="text-sm text-muted">
+              Total reserved:{" "}
+              <span className="font-semibold text-foreground">
+                {formatQty(reservationModal.totalReserved)}
+              </span>{" "}
+              across {reservationModal.reservations.length} pending order
+              {reservationModal.reservations.length !== 1 ? "s" : ""}
+            </p>
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Order #</TH>
+                  <TH>Customer</TH>
+                  <TH>Phone</TH>
+                  <TH>Qty</TH>
+                  <TH>Created By</TH>
+                  <TH>Date</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {reservationModal.reservations.map((r) => (
+                  <TR
+                    key={r.orderId}
+                    className="cursor-pointer"
+                    onClick={() => {
+                      setReservationModal(null);
+                      router.push(`/orders/${r.orderId}`);
+                    }}
+                  >
+                    <TD className="font-medium text-primary">{r.orderNumber}</TD>
+                    <TD>{r.customerName}</TD>
+                    <TD>{r.customerPhone}</TD>
+                    <TD className="font-medium">{formatQty(r.quantity)}</TD>
+                    <TD className="text-muted">{r.createdBy}</TD>
+                    <TD className="text-xs text-muted">
+                      {new Date(r.createdAt).toLocaleDateString()}
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </div>
+        ) : null}
+      </Modal>
 
       <StockReportDownloadModal
         open={pdfModalOpen}
