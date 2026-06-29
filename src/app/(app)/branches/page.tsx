@@ -9,6 +9,7 @@ import { Modal } from "@/components/ui/modal";
 import { api, ApiError } from "@/lib/fetcher";
 import { cn } from "@/lib/utils";
 import { modalFieldKeyDown, setModalFieldRef } from "@/lib/modal-field-nav";
+import { generateBranchCode } from "@/lib/branch-code";
 import { normalizePhone } from "@/lib/phone";
 import { SkeletonTable } from "@/components/ui/skeleton";
 
@@ -634,7 +635,7 @@ function BranchFormFields({
     (index: number) => (e: React.KeyboardEvent) => modalFieldKeyDown(e, fieldRefs.current, index),
     []
   );
-  const credentialsStartIndex = mode === "edit" ? 3 : 2;
+  const credentialsStartIndex = 2;
 
   return (
     <div className="space-y-5">
@@ -650,6 +651,16 @@ function BranchFormFields({
             onChange={(e) => onChange({ name: e.target.value })}
             onKeyDown={fieldKeyDown(0)}
           />
+          {mode === "add" && form.name.trim() && (
+            <p className="text-sm text-muted">
+              Branch Code: <strong>{generateBranchCode(form.name) || "—"}</strong>
+            </p>
+          )}
+          {mode === "edit" && (
+            <p className="text-sm text-muted">
+              Branch Code: <strong>{form.code}</strong>
+            </p>
+          )}
           <Input
             ref={(el) => setModalFieldRef(fieldRefs.current, 1, el)}
             placeholder="Phone"
@@ -657,19 +668,6 @@ function BranchFormFields({
             onChange={(e) => onChange({ phone: e.target.value })}
             onKeyDown={fieldKeyDown(1)}
           />
-          {mode === "edit" && (
-            <Input
-              ref={(el) => setModalFieldRef(fieldRefs.current, 2, el)}
-              placeholder="Branch Code"
-              value={form.code}
-              readOnly
-              onKeyDown={fieldKeyDown(2)}
-              className="bg-slate-50 text-muted"
-            />
-          )}
-          {mode === "add" && (
-            <p className="text-xs text-muted">Branch code will be generated automatically.</p>
-          )}
         </div>
       </div>
 

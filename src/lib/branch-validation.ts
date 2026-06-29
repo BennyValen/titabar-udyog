@@ -34,7 +34,7 @@ export const branchCreateSchema = z.object({
     z
       .string()
       .trim()
-      .min(2, "Branch code must be at least 2 characters")
+      .min(3, "Branch code must be at least 3 characters")
       .max(10)
       .optional()
   ),
@@ -47,7 +47,7 @@ export const branchUpdateSchema = z.object({
   name: z.preprocess(emptyToUndefined, z.string().trim().min(1).optional()),
   code: z.preprocess(
     emptyToUndefined,
-    z.string().trim().min(2).max(10).optional()
+    z.string().trim().min(3).max(10).optional()
   ),
   phone: optionalNormalizedPhoneSchema,
   isActive: z.boolean().optional(),
